@@ -1,195 +1,233 @@
 --[[
-    Grow Garden Ultimate (v4 - Click to Start)
-
-    HOW IT WORKS:
-    1. When you execute this script, a small button will appear on the side of your screen saying "Load Grow Garden GUI".
-    2. Click that button.
-    3. The main GUI with all the farming and hatching options will then appear.
-    4. The start button will disappear after you click it.
+    Grow Garden Script (v5 - Custom GUI)
+    - Built from scratch without any external libraries to ensure compatibility.
+    - Click and drag the top bar to move the GUI.
 ]]
 
--- This function contains the entire main GUI. It only runs when the start button is clicked.
-local function StartMainGUI()
-    --================================================================================================================--
-    --  [ GUI Library - Orion ]
-    --================================================================================================================--
-    local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
-    local Window = OrionLib:MakeWindow({Name = "Grow Garden Ultimate", HidePremium = false, SaveConfig = true, ConfigFolder = "Orion_GrowGarden"})
+-- ===================================================================
+--  CORE VARIABLES & STATE
+-- ===================================================================
+local isAutoHatching = false
+local isAutoCollecting = false
+local selectedEggName = "Common Egg"
 
-    --================================================================================================================--
-    --  [ Script Configuration & Variables ]
-    --================================================================================================================--
-    local Config = {
-        HatchRemoteName = "Hatch",
-        PetInventoryName = "Pets",
-        PetRarityName = "Rarity",
-        TargetRarity = "Divine",
-        
-        SeedNameOnGround = "Seed",
-        CollectionWaitTime = 0.2,
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Player = Players.LocalPlayer
 
-        BuySeedRemoteName = "BuySeed",
-        
-        IsAutoHatching = false,
-        IsAutoCollecting = false
-    }
+-- ===================================================================
+--  CORE FUNCTIONS (HATCHING & COLLECTING)
+-- ===================================================================
 
-    local selectedEggName = "Common Egg"
-
-    --================================================================================================================--
-    --  [ Core Script Logic ]
-    --================================================================================================================--
-    local Players = game:GetService("Players")
-    local Workspace = game:GetService("Workspace")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local Player = Players.LocalPlayer
-
-    local function notify(text)
-        OrionLib:MakeNotification({ Name = "Script Notification", Content = text, Image = "rbxassetid://4483345998", Time = 5 })
+-- Find a GUI element by name (to update labels, etc.)
+local GUI
+local function FindGUI(name)
+    if GUI and GUI:FindFirstChild(name, true) then
+        return GUI:FindFirstChild(name, true)
     end
-
-    --================================================================================================================--
-    --  [ Auto Hatch Tab ]
-    --================================================================================================================--
-    local HatchTab = Window:MakeTab({ Name = "Auto Hatch", Icon = "rbxassetid://6031049255" })
-
-    HatchTab:AddDropdown({
-        Name = "Select Egg",
-        Default = "Common Egg",
-        Options = {"Common Egg", "Rare Egg", "Legendaries Egg", "Mythic Egg", "Bug Egg", "Anti Bee Egg", "Bee Egg"},
-        Callback = function(Value) selectedEggName = Value end
-    })
-
-    local HatchStatusLabel = HatchTab:AddLabel("Status: Idle")
-
-    local HatchToggle = HatchTab:AddToggle({
-        Name = "Auto Hatch for Divine",
-        Default = false,
-        Callback = function(Value)
-            Config.IsAutoHatching = Value
-            if not Value then HatchStatusLabel:Set("Status: Idle"); return end
-            
-            task.spawn(function()
-                local hatchRemote = ReplicatedStorage:FindFirstChild(Config.HatchRemoteName, true)
-                if not hatchRemote then notify("Error: Hatch Remote not found!"); Config.IsAutoHatching = false; if HatchToggle then HatchToggle:Set(false) end; return end
-                HatchStatusLabel:Set("Status: Hatching " .. selectedEggName)
-                while Config.IsAutoHatching do
-                    pcall(function() hatchRemote:FireServer(selectedEggName, 1) end)
-                    task.wait(0.5)
-                end
-            end)
-        end
-    })
-
-    local petInventory = Player:WaitForChild(Config.PetInventoryName)
-    petInventory.ChildAdded:Connect(function(newPet)
-        if Config.IsAutoHatching then
-            local petRarity = newPet:WaitForChild(Config.PetRarityName, 5)
-            if petRarity and petRarity.Value == Config.TargetRarity then
-                Config.IsAutoHatching = false
-                if HatchToggle then HatchToggle:Set(false) end
-                HatchStatusLabel:Set("Status: Found a " .. Config.TargetRarity .. "!")
-                notify("SUCCESS! You hatched a " .. Config.TargetRarity .. " pet!")
-            elseif petRarity then
-                 HatchStatusLabel:Set("Status: Pet is a "..tostring(petRarity.Value))
-            end
-        end
-    end)
-
-    --================================================================================================================--
-    --  [ Auto Farm Tab ]
-    --================================================================================================================--
-    local FarmTab = Window:MakeTab({ Name = "Auto Farm", Icon = "rbxassetid://5793393959" })
-
-    FarmTab:AddLabel("Auto Buy From Shop"):SetColor(Color3.fromRGB(0, 255, 255))
-    local selectedSeedToBuy = "Carrot"
-    local seedBuyQuantity = 1
-
-    FarmTab:AddDropdown({
-        Name = "Select Seed to Buy",
-        Default = "Carrot",
-        Options = {
-            "Carrot", "Strawberry", "Blueberry", "Orange Tulip", "Tomato", "Daffodil", "Corn",
-            "Watermelon", "Pumpkin", "Apple", "Bamboo", "Coconut", "Cactus", "Dragon Fruit",
-            "Mango", "Mushroom", "Grape", "Pepper Seed", "Cacao", "Beanstalk", "Ember Lily",
-            "Lavender Seed", "Nectarshade Seed", "Candy Blossom"
-        },
-        Callback = function(Value) selectedSeedToBuy = Value end
-    })
-
-    FarmTab:AddTextbox({
-        Name = "Quantity to Buy", Default = "1", TextDisappear = false,
-        Callback = function(value) seedBuyQuantity = tonumber(value) or 1 end
-    })
-
-    FarmTab:AddButton({
-        Name = "Buy Selected Seed",
-        Callback = function()
-            local buyRemote = ReplicatedStorage:FindFirstChild(Config.BuySeedRemoteName, true)
-            if not buyRemote then notify("Error: Could not find the Buy Seed Remote ('" .. Config.BuySeedRemoteName .. "')."); return end
-            notify("Attempting to buy " .. seedBuyQuantity .. "x " .. selectedSeedToBuy .. "...")
-            pcall(function() buyRemote:FireServer(selectedSeedToBuy, seedBuyQuantity) end)
-            notify("Purchase request sent to server.")
-        end
-    })
-
-    FarmTab:AddDivider()
-    FarmTab:AddLabel("Auto Collect Spawned Seeds"):SetColor(Color3.fromRGB(0, 255, 255))
-
-    FarmTab:AddToggle({
-        Name = "Auto Get Seeds on Ground",
-        Default = false,
-        Callback = function(Value)
-            Config.IsAutoCollecting = Value
-            task.spawn(function()
-                if not Config.IsAutoCollecting then return end
-                notify("Auto-collecting seeds from ground!")
-                while Config.IsAutoCollecting do
-                    local humanoidRootPart = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
-                    if humanoidRootPart then
-                        for i, v in pairs(Workspace:GetChildren()) do
-                            if not Config.IsAutoCollecting then break end
-                            if v.Name == Config.SeedNameOnGround and v:IsA("BasePart") then
-                                humanoidRootPart.CFrame = v.CFrame * CFrame.new(0, 3, 0)
-                                task.wait(Config.CollectionWaitTime)
-                            end
-                        end
-                    end
-                    task.wait(1)
-                end
-                notify("Stopped auto-collecting.")
-            end)
-        end
-    })
-
-    OrionLib:Init()
-    notify("Grow Garden GUI Loaded!")
+    return nil
 end
 
+-- Auto-Hatch Loop
+local function StartHatchLoop()
+    task.spawn(function()
+        local hatchRemote = ReplicatedStorage:FindFirstChild("Hatch", true)
+        if not hatchRemote then
+            if FindGUI("HatchStatusLabel") then FindGUI("HatchStatusLabel").Text = "Error: Hatch Remote not found!" end
+            return
+        end
+        
+        while isAutoHatching do
+            if FindGUI("HatchStatusLabel") then FindGUI("HatchStatusLabel").Text = "Hatching: " .. selectedEggName end
+            pcall(function() hatchRemote:FireServer(selectedEggName, 1) end)
+            task.wait(0.5)
+        end
+        if FindGUI("HatchStatusLabel") then FindGUI("HatchStatusLabel").Text = "Stopped." end
+    end)
+end
 
--- This is the code that creates the simple start button
-local StartScreenGui = Instance.new("ScreenGui")
-local StartButton = Instance.new("TextButton")
+-- Auto-Collect Loop
+local function StartCollectLoop()
+    task.spawn(function()
+        while isAutoCollecting do
+            if FindGUI("CollectStatusLabel") then FindGUI("CollectStatusLabel").Text = "Status: Searching for seeds..." end
+            local humanoidRootPart = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+            if humanoidRootPart then
+                local foundSeed = false
+                for _, v in pairs(Workspace:GetChildren()) do
+                    if not isAutoCollecting then break end
+                    if v.Name == "Seed" and v:IsA("BasePart") then
+                        foundSeed = true
+                        humanoidRootPart.CFrame = v.CFrame * CFrame.new(0, 3, 0)
+                        task.wait(0.2)
+                    end
+                end
+                if not foundSeed and FindGUI("CollectStatusLabel") then FindGUI("CollectStatusLabel").Text = "Status: No seeds found. Waiting..." end
+            end
+            task.wait(1)
+        end
+        if FindGUI("CollectStatusLabel") then FindGUI("CollectStatusLabel").Text = "Status: Stopped." end
+    end)
+end
 
-StartScreenGui.Parent = game:GetService("CoreGui") -- Use CoreGui to avoid deletion by the game
-StartScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+-- Listen for new pets to stop hatching
+local petInventory = Player:WaitForChild("Pets")
+petInventory.ChildAdded:Connect(function(newPet)
+    if isAutoHatching then
+        local petRarity = newPet:WaitForChild("Rarity", 5)
+        if petRarity then
+            if FindGUI("HatchStatusLabel") then FindGUI("HatchStatusLabel").Text = "Hatched: "..tostring(petRarity.Value) end
+            if petRarity.Value == "Divine" then
+                isAutoHatching = false
+                local hatchButton = FindGUI("HatchToggleButton")
+                if hatchButton then
+                    hatchButton.Text = "Auto Hatch Divine"
+                    hatchButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+                end
+                if FindGUI("HatchStatusLabel") then FindGUI("HatchStatusLabel").Text = "SUCCESS! Found Divine!" end
+            end
+        end
+    end
+end)
 
-StartButton.Parent = StartScreenGui
-StartButton.Size = UDim2.new(0, 200, 0, 50)
-StartButton.Position = UDim2.new(0.5, -100, 0.8, 0) -- Positioned near the bottom center
-StartButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-StartButton.BorderColor3 = Color3.fromRGB(80, 80, 255)
-StartButton.BorderSizePixel = 2
-StartButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-StartButton.Text = "Load Grow Garden GUI"
-StartButton.Font = Enum.Font.SourceSansBold
-StartButton.TextSize = 18
 
--- This makes the button clickable and draggable
-StartButton.Draggable = true
+-- ===================================================================
+--  CUSTOM GUI CREATION (NO LIBRARIES)
+-- ===================================================================
 
--- When the button is clicked, it runs the main function and then destroys itself.
-StartButton.MouseButton1Click:Connect(function()
-    StartMainGUI()
-    StartScreenGui:Destroy()
+GUI = Instance.new("ScreenGui")
+GUI.Name = "CustomGrowGardenGUI"
+GUI.Parent = game:GetService("CoreGui")
+GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = GUI
+MainFrame.Size = UDim2.new(0, 300, 0, 200)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+MainFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
+MainFrame.BorderSizePixel = 2
+MainFrame.Active = true
+MainFrame.Draggable = true -- Allows dragging
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Parent = MainFrame
+TitleBar.Size = UDim2.new(1, 0, 0, 30)
+TitleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Parent = TitleBar
+TitleLabel.Size = UDim2.new(1, 0, 1, 0)
+TitleLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.Text = "Grow Garden Script"
+TitleLabel.Font = Enum.Font.SourceSansBold
+TitleLabel.TextSize = 16
+
+-- == HATCHING SECTION ==
+local HatchLabel = Instance.new("TextLabel")
+HatchLabel.Name = "HatchLabel"
+HatchLabel.Parent = MainFrame
+HatchLabel.Size = UDim2.new(1, -20, 0, 20)
+HatchLabel.Position = UDim2.new(0, 10, 0, 40)
+HatchLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+HatchLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+HatchLabel.Text = "Selected Egg: " .. selectedEggName
+HatchLabel.TextXAlignment = Enum.TextXAlignment.Left
+HatchLabel.Font = Enum.Font.SourceSans
+
+-- Manual Dropdown (it's just a button that cycles through the list)
+local EggCycleButton = Instance.new("TextButton")
+EggCycleButton.Name = "EggCycleButton"
+EggCycleButton.Parent = MainFrame
+EggCycleButton.Size = UDim2.new(1, -20, 0, 25)
+EggCycleButton.Position = UDim2.new(0, 10, 0, 65)
+EggCycleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+EggCycleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+EggCycleButton.Text = "Change Egg"
+EggCycleButton.Font = Enum.Font.SourceSansSemibold
+
+local eggList = {"Common Egg", "Rare Egg", "Legendaries Egg", "Mythic Egg", "Bug Egg", "Anti Bee Egg", "Bee Egg"}
+local currentEggIndex = 1
+EggCycleButton.MouseButton1Click:Connect(function()
+    currentEggIndex = currentEggIndex + 1
+    if currentEggIndex > #eggList then currentEggIndex = 1 end
+    selectedEggName = eggList[currentEggIndex]
+    HatchLabel.Text = "Selected Egg: " .. selectedEggName
+end)
+
+local HatchToggleButton = Instance.new("TextButton")
+HatchToggleButton.Name = "HatchToggleButton"
+HatchToggleButton.Parent = MainFrame
+HatchToggleButton.Size = UDim2.new(0.5, -15, 0, 30)
+HatchToggleButton.Position = UDim2.new(0, 10, 0, 100)
+HatchToggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0) -- Green
+HatchToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+HatchToggleButton.Text = "Auto Hatch Divine"
+HatchToggleButton.Font = Enum.Font.SourceSansBold
+
+local HatchStatusLabel = Instance.new("TextLabel")
+HatchStatusLabel.Name = "HatchStatusLabel"
+HatchStatusLabel.Parent = MainFrame
+HatchStatusLabel.Size = UDim2.new(0.5, -15, 0, 30)
+HatchStatusLabel.Position = UDim2.new(0.5, 5, 0, 100)
+HatchStatusLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+HatchStatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+HatchStatusLabel.Text = "Stopped."
+HatchStatusLabel.Font = Enum.Font.SourceSans
+
+HatchToggleButton.MouseButton1Click:Connect(function()
+    isAutoHatching = not isAutoHatching
+    if isAutoHatching then
+        HatchToggleButton.Text = "STOP HATCHING"
+        HatchToggleButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0) -- Red
+        StartHatchLoop()
+    else
+        HatchToggleButton.Text = "Auto Hatch Divine"
+        HatchToggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0) -- Green
+    end
+end)
+
+
+-- == SEED COLLECTION SECTION ==
+local Divider = Instance.new("Frame")
+Divider.Parent = MainFrame
+Divider.Size = UDim2.new(1, -20, 0, 2)
+Divider.Position = UDim2.new(0, 10, 0, 140)
+Divider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+
+local CollectToggleButton = Instance.new("TextButton")
+CollectToggleButton.Name = "CollectToggleButton"
+CollectToggleButton.Parent = MainFrame
+CollectToggleButton.Size = UDim2.new(0.5, -15, 0, 30)
+CollectToggleButton.Position = UDim2.new(0, 10, 0, 150)
+CollectToggleButton.BackgroundColor3 = Color3.fromRGB(0, 85, 170) -- Blue
+CollectToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CollectToggleButton.Text = "Auto Get Seeds"
+CollectToggleButton.Font = Enum.Font.SourceSansBold
+
+local CollectStatusLabel = Instance.new("TextLabel")
+CollectStatusLabel.Name = "CollectStatusLabel"
+CollectStatusLabel.Parent = MainFrame
+CollectStatusLabel.Size = UDim2.new(0.5, -15, 0, 30)
+CollectStatusLabel.Position = UDim2.new(0.5, 5, 0, 150)
+CollectStatusLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+CollectStatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+CollectStatusLabel.Text = "Status: Stopped."
+CollectStatusLabel.Font = Enum.Font.SourceSans
+
+CollectToggleButton.MouseButton1Click:Connect(function()
+    isAutoCollecting = not isAutoCollecting
+    if isAutoCollecting then
+        CollectToggleButton.Text = "STOP COLLECTING"
+        CollectToggleButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0) -- Red
+        StartCollectLoop()
+    else
+        CollectToggleButton.Text = "Auto Get Seeds"
+        CollectToggleButton.BackgroundColor3 = Color3.fromRGB(0, 85, 170) -- Blue
+    end
 end)
